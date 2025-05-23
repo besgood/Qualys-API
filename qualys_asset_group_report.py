@@ -4,12 +4,10 @@ from requests.auth import HTTPBasicAuth
 import getpass
 import time
 import os
-import csv
-import pandas as pd
 
 # Constants
 QUALYS_BASE_URL = 'https://qualysapi.qualys.com'
-OUTPUT_FORMAT = 'csv'  # API will return CSV, we will convert it to XLSX
+OUTPUT_FORMAT = 'csv'
 
 # Prompt for credentials
 USERNAME = input("Qualys Username: ")
@@ -86,19 +84,9 @@ def check_report_status(report_id):
                 return
             else:
                 print(f"⌛ Report status: {status} (retrying in 10 minutes)")
-                time.sleep(600)  # Wait 10 minutes
+                time.sleep(600)  # 10 minutes
         else:
             raise Exception(f"❌ Could not determine report status. Response:\n{response.text}")
-
-
-def convert_csv_to_excel(csv_path, xlsx_path):
-    try:
-        df = pd.read_csv(csv_path)
-        df.to_excel(xlsx_path, index=False)
-        print(f"📄 Converted CSV to Excel: {xlsx_path}")
-        os.remove(csv_path)
-    except Exception as e:
-        print(f"⚠️ Failed to convert CSV to Excel: {e}")
 
 
 def download_report(report_id, report_title=None):
@@ -113,13 +101,10 @@ def download_report(report_id, report_title=None):
         report_title = f"Qualys_Report_{report_id}"
 
     csv_path = os.path.join("reports", f"{report_title}.csv")
-    xlsx_path = os.path.join("reports", f"{report_title}.xlsx")
 
     with open(csv_path, 'wb') as f:
         f.write(response.content)
     print(f"📥 CSV report saved to: {csv_path}")
-
-    convert_csv_to_excel(csv_path, xlsx_path)
 
 
 def main():
