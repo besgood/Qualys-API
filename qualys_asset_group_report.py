@@ -59,14 +59,27 @@ def launch_report():
     }
 
     print("🚀 Launching report...")
-    response = requests.post(f"{QUALYS_BASE_URL}/api/2.0/fo/report/", data=data, headers=HEADERS, auth=HTTPBasicAuth(USERNAME, PASSWORD))
+    response = requests.post(
+        f"{QUALYS_BASE_URL}/api/2.0/fo/report/",
+        data=data,
+        headers=HEADERS,
+        auth=HTTPBasicAuth(USERNAME, PASSWORD)
+    )
+
     root = ET.fromstring(response.text)
 
-    report_id_elem = root.find('.//ITEM[@key="id"]')
-    if report_id_elem is None:
+    # Updated parsing logic for response format
+    report_id = None
+    for item in root.findall('.//ITEM'):
+        key = item.find('KEY')
+        value = item.find('VALUE')
+        if key is not None and key.text == "ID" and value is not None:
+            report_id = value.text
+            break
+
+    if not report_id:
         raise Exception(f"❌ Report ID not found in response:\n{response.text}")
 
-    report_id = report_id_elem.text
     print(f"📄 Report launched with ID: {report_id}")
     return report_id, report_title
 
