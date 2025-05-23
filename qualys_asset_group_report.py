@@ -1,48 +1,41 @@
+#!/usr/bin/env python3
+
 import requests
-import xml.etree.ElementTree as ET
-from requests.auth import HTTPBasicAuth
-import getpass
 import time
 import os
+import xml.etree.ElementTree as ET
+from datetime import datetime, timedelta
+from getpass import getpass
+from requests.auth import HTTPBasicAuth
 
 # Constants
-QUALYS_BASE_URL = 'https://qualysapi.qualys.com'
-OUTPUT_FORMAT = 'csv'
-
-# Prompt for credentials
-USERNAME = input("Qualys Username: ")
-PASSWORD = getpass.getpass("Qualys Password: ")
-
-# Headers for API calls
-HEADERS = {
-    'X-Requested-With': 'Python script',
-    'Content-Type': 'application/x-www-form-urlencoded'
-}
+QUALYS_BASE_URL = "https://qualysapi.qualys.com"
+OUTPUT_FORMAT = "csv"
+HEADERS = {"X-Requested-With": "Python Script"}
+REPORTS_DIR = "reports"
 
 # Ensure reports directory exists
-if not os.path.exists("reports"):
-    os.makedirs("reports")
+os.makedirs(REPORTS_DIR, exist_ok=True)
 
-
-def read_hosts_from_file(file_path):
-    with open(file_path, 'r') as f:
-        ips = [line.strip() for line in f if line.strip()]
-    return ','.join(ips)
-
+# Get user credentials
+USERNAME = input("Qualys Username: ")
+PASSWORD = getpass("Qualys Password: ")
 
 def build_host_input():
-    choice = input("Use asset group ID(s) (1) or host file (2)? Enter 1 or 2: ").strip()
-    if choice == '1':
+    option = input("Use asset group ID(s) (1) or host file (2)? Enter 1 or 2: ").strip()
+    if option == "1":
         ag_ids = input("Enter one or more Asset Group IDs (comma-separated): ").strip()
-        return 'asset_group_ids', ag_ids
-    elif choice == '2':
-        file_path = input("Enter path to host file (one IP per line): ").strip()
-        ips = read_hosts_from_file(file_path)
-        return 'ips', ips
+        return "asset_group_ids", ag_ids
+    elif option == "2":
+        host_file = input("Enter path to host file (one IP per line): ").strip()
+        try:
+            with open(host_file, "r") as f:
+                ips = f.read().strip().replace("\n", ",").replace("\r", "")
+            return "ips", ips
+        except Exception as e:
+            raise Exception(f"Failed to read host file: {e}")
     else:
-        print("Invalid choice. Exiting.")
-        exit(1)
-
+        raise ValueError("Invalid input. Choose 1 or 2.")
 
 def launch_report():
     report_title = f"Qualys_Report_{int(time.time())}"
@@ -50,11 +43,11 @@ def launch_report():
     input_type, input_value = build_host_input()
 
     data = {
-        'action': 'launch',
-        'report_title': report_title,
-        'report_type': 'Scan',
-        'template_id': template_id,
-        'output_format': OUTPUT_FORMAT,
+        "action": "launch",
+        "report_title": report_title,
+        "report_type": "Scan",
+        "template_id": template_id,
+        "output_format": OUTPUT_FORMAT,
         input_type: input_value
     }
 
@@ -67,15 +60,16 @@ def launch_report():
     )
 
     print("⏳ Waiting 10 seconds to allow Qualys to generate the report ID...")
+    wait_until = datetime.now() + timedelta(seconds=10)
+    print(f"🕒 Will try again at: {wait_until.strftime('%Y-%m-%d %H:%M:%S')}")
     time.sleep(10)
 
     root = ET.fromstring(response.text)
 
-    # Updated parsing logic for response format
     report_id = None
-    for item in root.findall('.//ITEM'):
-        key = item.find('KEY')
-        value = item.find('VALUE')
+    for item in root.findall(".//ITEM"):
+        key = item.find("KEY")
+        value = item.find("VALUE")
         if key is not None and key.text == "ID" and value is not None:
             report_id = value.text
             break
@@ -87,55 +81,58 @@ def launch_report():
     return report_id, report_title
 
 def check_report_status(report_id):
-    url = f'{QUALYS_BASE_URL}/api/2.0/fo/report/?action=list&id={report_id}'
-    while True:
-        response = requests.get(url, headers=HEADERS, auth=HTTPBasicAuth(USERNAME, PASSWORD))
-        root = ET.fromstring(response.text)
-        state_elem = root.find('.//STATE')
-        if state_elem is not None:
-            status = state_elem.text
-            if status == "Finished":
-                print("✅ Report is ready for download.")
-                return
-            else:
-                print(f"⌛ Report status: {status} (retrying in 10 minutes)")
-                time.sleep(600)  # 10 minutes
-        else:
-            raise Exception(f"❌ Could not determine report status. Response:\n{response.text}")
+    response = requests.get(
+        f"{QUALYS_BASE_URL}/api/2.0/fo/report/",
+        params={"action": "list", "id": report_id},
+        headers=HEADERS,
+        auth=HTTPBasicAuth(USERNAME, PASSWORD)
+    )
 
+    root = ET.fromstring(response.text)
+    state_elem = root.find(".//STATE")
+    if state_elem is not None:
+        return state_elem.text
+    else:
+        raise Exception(f"Could not determine status. Response:\n{response.text}")
 
-def download_report(report_id, report_title=None):
-    print(f"⬇️ Downloading report ID: {report_id}")
-    url = f'{QUALYS_BASE_URL}/api/2.0/fo/report/?action=fetch&id={report_id}'
-    response = requests.get(url, headers=HEADERS, auth=HTTPBasicAuth(USERNAME, PASSWORD))
+def download_report(report_id, report_title):
+    response = requests.get(
+        f"{QUALYS_BASE_URL}/api/2.0/fo/report/",
+        params={"action": "fetch", "id": report_id},
+        headers=HEADERS,
+        auth=HTTPBasicAuth(USERNAME, PASSWORD)
+    )
 
-    if response.status_code != 200:
-        raise Exception(f"❌ Failed to download report. HTTP {response.status_code}")
-
-    if not report_title:
-        report_title = f"Qualys_Report_{report_id}"
-
-    csv_path = os.path.join("reports", f"{report_title}.csv")
-
-    with open(csv_path, 'wb') as f:
+    filename = os.path.join(REPORTS_DIR, f"{report_title}.csv")
+    with open(filename, "wb") as f:
         f.write(response.content)
-    print(f"📥 CSV report saved to: {csv_path}")
-
+    print(f"✅ Report downloaded and saved as {filename}")
 
 def main():
-    mode = input("Enter 1 to launch a new report or 2 to check/download existing report: ").strip()
-    if mode == '1':
-        report_id, title = launch_report()
-        check_report_status(report_id)
-        download_report(report_id, title)
-    elif mode == '2':
+    choice = input("Enter 1 to launch a new report or 2 to check/download existing report: ").strip()
+    if choice == "1":
+        report_id, report_title = launch_report()
+    elif choice == "2":
         report_id = input("Enter existing Report ID: ").strip()
-        check_report_status(report_id)
-        download_report(report_id)
+        report_title = f"Qualys_Report_{report_id}"
     else:
-        print("Invalid mode selected. Exiting.")
-        exit(1)
+        print("Invalid choice.")
+        return
 
+    while True:
+        try:
+            status = check_report_status(report_id)
+            print(f"📊 Report status: {status}")
+            if status.lower() == "finished":
+                download_report(report_id, report_title)
+                break
+            else:
+                next_try = datetime.now() + timedelta(minutes=10)
+                print(f"⏱ Waiting 10 minutes. Will try again at {next_try.strftime('%Y-%m-%d %H:%M:%S')}")
+                time.sleep(600)
+        except Exception as e:
+            print(f"⚠️ Error: {e}")
+            break
 
 if __name__ == "__main__":
     main()
