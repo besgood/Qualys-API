@@ -66,6 +66,9 @@ def launch_report():
         auth=HTTPBasicAuth(USERNAME, PASSWORD)
     )
 
+    print("⏳ Waiting 10 seconds to allow Qualys to generate the report ID...")
+    time.sleep(10)
+
     root = ET.fromstring(response.text)
 
     # Updated parsing logic for response format
@@ -82,7 +85,6 @@ def launch_report():
 
     print(f"📄 Report launched with ID: {report_id}")
     return report_id, report_title
-
 
 def check_report_status(report_id):
     url = f'{QUALYS_BASE_URL}/api/2.0/fo/report/?action=list&id={report_id}'
