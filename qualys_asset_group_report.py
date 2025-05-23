@@ -46,9 +46,7 @@ elif mode == "2":
         exit(1)
 
     host_list = ",".join(sorted(set(hosts)))
-    report_refs_xml = f"<filter><ip>{host_list}</ip></filter>"
-
-    TARGET_PARAM['report_refs'] = report_refs_xml
+    TARGET_PARAM['ips'] = host_list
     input_mode = "host_file"
 
 else:
@@ -59,14 +57,14 @@ else:
 def launch_report():
     url = f'{QUALYS_BASE_URL}/api/2.0/fo/report/'
 
-    if 'report_refs' in TARGET_PARAM:
+    if 'ips' in TARGET_PARAM:
         data = {
             'action': 'launch',
             'report_title': REPORT_TITLE,
-            'report_type': 'Custom',
+            'report_type': 'Scan',
             'template_id': TEMPLATE_ID,
             'output_format': OUTPUT_FORMAT,
-            'report_refs': TARGET_PARAM['report_refs']
+            'ips': TARGET_PARAM['ips']
         }
     else:
         data = {
@@ -83,11 +81,14 @@ def launch_report():
     if not response.text.strip():
         raise Exception("❌ Empty response from Qualys API.")
 
+    print("📩 API response received. Parsing...")
     try:
         root = ET.fromstring(response.text)
         report_id_elem = root.find('.//ITEM[@key="id"]')
         if report_id_elem is not None:
             return report_id_elem.text
+        print("🚫 Full response:")
+        print(response.text)
         raise Exception("❌ Report ID not found in response.")
     except ET.ParseError as e:
         raise Exception(f"❌ Failed to parse XML response: {e}\nResponse was:\n{response.text}")
