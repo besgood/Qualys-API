@@ -3,26 +3,52 @@ import time
 import xml.etree.ElementTree as ET
 from requests.auth import HTTPBasicAuth
 import getpass
+import os
 
-# === Prompt User for Input ===
+# === User Input ===
 print("== Qualys Report Generator ==")
 USERNAME = input("Qualys Username: ")
 PASSWORD = getpass.getpass("Qualys Password: ")
-asset_group_input = input("Enter one or more Asset Group IDs (comma-separated): ")
-ASSET_GROUP_IDS = ','.join([x.strip() for x in asset_group_input.split(',') if x.strip().isdigit()])
-TEMPLATE_ID = input("Report Template ID: ")
-REPORT_TITLE = f"Scan Report for Asset Groups {ASSET_GROUP_IDS}"
-OUTPUT_FORMAT = 'xlsx'
-DOWNLOAD_FILE_NAME = f'qualys_report_{ASSET_GROUP_IDS.replace(",", "_")}.{OUTPUT_FORMAT}'
+mode = input("Choose target input mode - (1) Asset Group ID(s) or (2) Host File [1/2]: ").strip()
 
-# === Config ===
+TARGET_PARAM = {}
+
+if mode == "1":
+    asset_group_input = input("Enter one or more Asset Group IDs (comma-separated): ")
+    asset_group_ids = ','.join([x.strip() for x in asset_group_input.split(',') if x.strip().isdigit()])
+    if not asset_group_ids:
+        raise ValueError("No valid Asset Group IDs provided.")
+    TARGET_PARAM['asset_group_ids'] = asset_group_ids
+    REPORT_TITLE = f"Scan Report for Asset Groups {asset_group_ids}"
+    DOWNLOAD_FILE_NAME = f"qualys_report_{asset_group_ids.replace(',', '_')}.xlsx"
+
+elif mode == "2":
+    host_file_path = input("Enter path to host file (IP or FQDN per line): ").strip()
+    if not os.path.isfile(host_file_path):
+        raise FileNotFoundError("Host file not found.")
+    with open(host_file_path, 'r') as f:
+        hosts = [line.strip() for line in f.readlines() if line.strip()]
+    if not hosts:
+        raise ValueError("Host file is empty.")
+    host_list = ','.join(hosts)
+    TARGET_PARAM['ip'] = host_list
+    REPORT_TITLE = "Scan Report for Custom Host List"
+    DOWNLOAD_FILE_NAME = "qualys_report_custom_hosts.xlsx"
+
+else:
+    raise ValueError("Invalid input. Choose '1' or '2'.")
+
+TEMPLATE_ID = input("Report Template ID: ")
+OUTPUT_FORMAT = 'xlsx'
+
+# === Constants ===
 QUALYS_BASE_URL = 'https://qualysapi.qualys.com'
 HEADERS = {
     'X-Requested-With': 'PythonScript',
     'Content-Type': 'application/x-www-form-urlencoded'
 }
 
-# === Step 1: Launch Report ===
+# === Launch Report ===
 def launch_report():
     url = f'{QUALYS_BASE_URL}/api/2.0/fo/report/'
     data = {
@@ -31,16 +57,16 @@ def launch_report():
         'report_type': 'Scan',
         'template_id': TEMPLATE_ID,
         'output_format': OUTPUT_FORMAT,
-        'asset_group_ids': ASSET_GROUP_IDS,
     }
+    data.update(TARGET_PARAM)
     response = requests.post(url, headers=HEADERS, auth=HTTPBasicAuth(USERNAME, PASSWORD), data=data)
     root = ET.fromstring(response.text)
     report_id_elem = root.find('.//ITEM[@key="id"]')
     if report_id_elem is not None:
         return report_id_elem.text
-    raise Exception("Failed to extract report ID from response.")
+    raise Exception("Failed to extract report ID from response. Response:\n" + response.text)
 
-# === Step 2: Wait for Report to Finish ===
+# === Wait for Report to Complete ===
 def wait_for_report(report_id, timeout=600, interval=15):
     url = f'{QUALYS_BASE_URL}/api/2.0/fo/report/?action=list&id={report_id}'
     elapsed = 0
@@ -57,7 +83,7 @@ def wait_for_report(report_id, timeout=600, interval=15):
         elapsed += interval
     raise TimeoutError("Report generation timed out.")
 
-# === Step 3: Download the Completed Report ===
+# === Download Report ===
 def download_report(report_id):
     url = f'{QUALYS_BASE_URL}/api/2.0/fo/report/?action=fetch&id={report_id}'
     response = requests.get(url, headers=HEADERS, auth=HTTPBasicAuth(USERNAME, PASSWORD), stream=True)
@@ -69,7 +95,7 @@ def download_report(report_id):
     else:
         raise Exception(f"Failed to download report. Status code: {response.status_code}")
 
-# === Main Flow ===
+# === Main ===
 if __name__ == "__main__":
     try:
         print("\n[+] Launching report...")
