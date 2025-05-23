@@ -1,28 +1,15 @@
-# Qualys Asset Group Report Generator
+✅ Prompts the user for credentials
+✅ Allows selecting either:
 
-This Python script automates the generation and download of Qualys vulnerability scan reports for **one or more Asset Group IDs**, using a specified **report template**. The final report is downloaded in **Excel format (.xlsx)**.
+One or more Asset Group IDs, or
 
----
+A host file with IPs or FQDNs
+✅ Uses a specific report template ID
+✅ Downloads the report in Excel format (.xlsx)
+✅ Waits for the report to finish before downloading
 
-## 🔧 Features
-
-- Securely prompts for your Qualys username and password (no hardcoding)
-- Accepts **multiple Asset Group IDs**
-- Supports user-specified Report Template ID
-- Generates report in Excel format
-- Waits for report to finish and downloads it automatically
-
----
-
-## 📦 Requirements
-
-- Python 3.6+
-- Internet access to connect to [Qualys API](https://qualysapi.qualys.com)
-- Access to the Qualys Vulnerability Management (VM/VMDR) API
-
-### Python Dependencies
-
-Install via pip:
-
-```bash
-pip install requests
+Qualys Username: user@example.com
+Qualys Password: ********
+Choose target input mode - (1) Asset Group ID(s) or (2) Host File [1/2]: 2
+Enter path to host file (IP or FQDN per line): ./hosts.txt
+Report Template ID: 10001
